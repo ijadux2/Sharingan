@@ -1,6 +1,8 @@
-# Sharingan
+# Sharingan.nvim
 
-A Doom Emacs-style Neovim plugin manager with a beautiful TUI.
+**Sharingan.nvim** - A Doom Emacs-style Neovim plugin manager with a beautiful TUI.
+
+Repository: [https://github.com/ijadux2/Sharingan.nvim](https://github.com/ijadux2/Sharingan.nvim)
 
 ## Features
 
@@ -14,14 +16,14 @@ A Doom Emacs-style Neovim plugin manager with a beautiful TUI.
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/sharingan.git ~/codespace/sharingan
-cd ~/codespace/sharingan
+git clone https://github.com/ijadux2/Sharingan.nvim.git ~/codespace/sharingan.nvim
+cd ~/codespace/sharingan.nvim
 ./install.sh
 ```
 
 Or manually:
 ```bash
-ln -s ~/codespace/sharingan/sharingan ~/.local/bin/sharingan
+ln -s ~/codespace/sharingan.nvim/sharingan ~/.local/bin/sharingan
 export PATH="$HOME/.local/bin:$PATH"  # Add to .bashrc/.zshrc
 ```
 
