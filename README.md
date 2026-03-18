@@ -16,16 +16,9 @@ Repository: [https://github.com/ijadux2/Sharingan.nvim](https://github.com/ijadu
 ## Installation
 
 ```bash
-git clone https://github.com/ijadux2/Sharingan.nvim.git ~/codespace/sharingan.nvim
-cd ~/codespace/sharingan.nvim
+git clone https://github.com/ijadux2/Sharingan.git
+cd ./sharingan/
 ./install.sh
-```
-
-Or manually:
-
-```bash
-ln -s ~/codespace/sharingan.nvim/sharingan ~/.local/bin/sharingan
-export PATH="$HOME/.local/bin:$PATH"  # Add to .bashrc/.zshrc
 ```
 
 ## Usage
