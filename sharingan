@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                           SHARINGAN v1.0                                     ║
+# ║                   Neovim Plugin Manager (Doom-style)                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+set -euo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+NVIM_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
+SHARINGAN_DIR="${HOME}/.local/share/sharingan"
+SHARINGAN_DATA="${SHARINGAN_DIR}/data"
+CACHE_DIR="${HOME}/.cache/sharingan"
+LAZY_LOCK="${NVIM_CONFIG_DIR}/lazy-lock.json"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+ORANGE='\033[0;33m'
+PINK='\033[0;38;5;205m'
+BG_DARK='\033[48;2;30;30;46m'
+BG_CARD='\033[48;2;40;44;56m'
+BOLD='\033[1m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+# Spinner
+SPINNER_CHARS=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+spin_idx=0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UTILITIES
+# ─────────────────────────────────────────────────────────────────────────────
+log() { printf "${BG_DARK}  %s${RESET}\n" "$*"; }
+info() { printf "${BG_DARK}  ${BLUE}ℹ${RESET} %s${RESET}\n" "$*"; }
+success() { printf "${BG_DARK}  ${GREEN}✓${RESET} %s${RESET}\n" "$*"; }
+warn() { printf "${BG_DARK}  ${YELLOW}⚠${RESET} %s${RESET}\n" "$*"; }
+error() { printf "${BG_DARK}  ${RED}✗${RESET} %s${RESET}\n" "$*"; }
+
+spinner_start() {
+    spin_idx=0
+}
+spinner_update() {
+    printf "\r${BG_DARK}  ${CYAN}%s${RESET} %s..." "${SPINNER_CHARS[$spin_idx]}" "$*"
+    spin_idx=$(( (spin_idx + 1) % ${#SPINNER_CHARS[@]} ))
+}
+spinner_stop() {
+    printf "\r${BG_DARK}  ${GREEN}✓${RESET} %s\n" "$*"
+}
+
+draw_box() {
+    local title="$1"
+    local width=60
+    local content=("${@:2}")
+    
+    echo -e "${BG_CARD}  ┌$(printf '─%.0s' $(seq 1 $width))┐"
+    printf "${BG_CARD}  │${BOLD} %-${width}s │\n" "$title"
+    echo -e "${BG_CARD}  ├$(printf '─%.0s' $(seq 1 $width))┤"
+    for line in "${content[@]}"; do
+        printf "${BG_CARD}  │ %-${width}s │\n" "${line:0:$width}"
+    done
+    echo -e "${BG_CARD}  └$(printf '─%.0s' $(seq 1 $width))┘${RESET}"
+}
+
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=40
+    local filled=$(( current * width / total ))
+    local percent=$(( current * 100 / total ))
+    
+    printf "${BG_DARK}  [${GREEN}%${filled}s${DIM}%${((width - filled))}s${RESET}] ${CYAN}%3d%%${RESET}\n" \
+        "" "" "$percent"
+}
+
+ask() {
+    echo -e "\n${BG_CARD}${YELLOW}[?]${RESET} ${CYAN}$*${RESET}"
+    echo -ne "${BG_CARD}[${GREEN}y${RESET}/${RED}n${RESET}]: ${BOLD}"
+    read -r answer
+    echo -ne "${RESET}"
+    [[ "${answer,,}" =~ ^(y|yes)$ ]]
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WELCOME & HELP
+# ─────────────────────────────────────────────────────────────────────────────
+welcome() {
+    echo -e "
+${BG_DARK}  ${PURPLE}${BOLD}╔══════════════════════════════════════════════════════════╗${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}              ${RED}███████${RESET}${BG_DARK}                                ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}            ${ORANGE}██${RESET}${BG_DARK}      ${ORANGE}██${RESET}${BG_DARK}                              ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}          ${YELLOW}██${RESET}${BG_DARK}  ${YELLOW}██${RESET}${BG_DARK}    ${YELLOW}██${RESET}${BG_DARK}  ${YELLOW}██${RESET}${BG_DARK}                    ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}    ${YELLOW}██████████████████████████████${RESET}${BG_DARK}        ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}      ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}              ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}      ${ORANGE}██████████████████████████████${RESET}${BG_DARK}      ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}║${RESET}${BG_DARK}      ${RED}██${RESET}${BG_DARK}  ${RED}██${RESET}${BG_DARK}  ${YELLOW}██${RESET}${BG_DARK}  ${GREEN}██${RESET}${BG_DARK}  ${CYAN}██${RESET}${BG_DARK}  ${BLUE}██${RESET}${BG_DARK}  ${PURPLE}██${RESET}${BG_DARK}      ${PURPLE}${BOLD}║${RESET}
+${BG_DARK}  ${PURPLE}${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}
+
+${BG_DARK}  ${CYAN}${BOLD}Sharingan${RESET} - Neovim Plugin Manager
+${BG_DARK}  ${DIM}════════════════════════════════════════════════════════════════${RESET}
+"
+}
+
+help() {
+    echo -e "${BG_DARK}  ${CYAN}${BOLD}USAGE:${RESET}
+${BG_DARK}    ${GREEN}sharingan${RESET} <command> [options]
+
+${BG_DARK}  ${CYAN}${BOLD}COMMANDS:${RESET}
+${BG_DARK}    ${GREEN}update${RESET} [plugin]     ${DIM}Update all plugins or a specific plugin${RESET}
+${BG_DARK}    ${GREEN}reset${RESET}               ${DIM}Reset config from git${RESET}
+${BG_DARK}    ${GREEN}remove-config${RESET}       ${DIM}Remove entire Neovim config${RESET}
+${BG_DARK}    ${GREEN}list${RESET}                ${DIM}List installed plugins${RESET}
+${BG_DARK}    ${GREEN}clean${RESET}               ${DIM}Remove unused plugins${RESET}
+${BG_DARK}    ${GREEN}sync${RESET}                ${DIM}Sync plugin database${RESET}
+${BG_DARK}    ${GREEN}search${RESET} <query>      ${DIM}Search for plugins online${RESET}
+${BG_DARK}    ${GREEN}info${RESET} <plugin>       ${DIM}Show plugin information${RESET}
+${BG_DARK}    ${GREEN}doctor${RESET}              ${DIM}Check system for issues${RESET}
+${BG_DARK}    ${GREEN}help${RESET}                ${DIM}Show this help message${RESET}
+
+${BG_DARK}  ${CYAN}${BOLD}EXAMPLES:${RESET}
+${BG_DARK}    ${GREEN}sharingan update${RESET}           ${DIM}Update all plugins${RESET}
+${BG_DARK}    ${GREEN}sharingan update telescope${RESET} ${DIM}Update specific plugin${RESET}
+${BG_DARK}    ${GREEN}sharingan reset${RESET}            ${DIM}Reset to latest git${RESET}
+
+${BG_DARK}  ${CYAN}${BOLD}FLAGS:${RESET}
+${BG_DARK}    ${YELLOW}-f, --force${RESET}   ${DIM}Skip confirmation prompts${RESET}
+${BG_DARK}    ${YELLOW}-v, --verbose${RESET} ${DIM}Enable verbose output${RESET}
+${RESET}"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMMANDS
+# ─────────────────────────────────────────────────────────────────────────────
+cmd_update() {
+    local plugin="${1:-}"
+    local force="${FORCE:-false}"
+    
+    if [[ -n "$plugin" ]]; then
+        if [[ "$plugin" == "tangle" ]]; then
+            cmd_update_tangle
+        else
+            update_plugin "$plugin"
+        fi
+    else
+        update_all
+    fi
+}
+
+update_all() {
+    info "Syncing all plugins..."
+    spinner_start
+    
+    if command -v nvim &>/dev/null; then
+        nvim --headless "+Lazy! sync" +qa 2>&1 | while IFS= read -r line; do
+            spinner_update "Syncing"
+        done
+        spinner_stop "All plugins updated!"
+    else
+        error "Neovim not found. Install it first."
+        exit 1
+    fi
+}
+
+update_plugin() {
+    local plugin="$1"
+    info "Updating ${CYAN}$plugin${RESET}..."
+    
+    if command -v nvim &>/dev/null; then
+        nvim --headless "+Lazy! load $plugin" +qa 2>&1 || true
+        success "Plugin '${plugin}' updated!"
+    else
+        error "Neovim not found."
+        exit 1
+    fi
+}
+
+update_tangle() {
+    if [[ -f "$LAZY_LOCK" ]]; then
+        success "Config tangle is up to date"
+    else
+        warn "No lazy-lock.json found. Run 'sharingan sync' first."
+    fi
+}
+
+cmd_reset() {
+    if ! "${FORCE:-false}" && ! ask "Reset your Neovim config to latest git?"; then
+        info "Aborted."
+        exit 0
+    fi
+    
+    if [[ -d "$NVIM_CONFIG_DIR/.git" ]]; then
+        info "Pulling latest from git..."
+        git -C "$NVIM_CONFIG_DIR" pull origin main 2>&1 || true
+        success "Config reset complete!"
+    else
+        warn "Config is not a git repository."
+        info "Use 'sharingan update' to clone from a remote."
+    fi
+}
+
+cmd_remove_config() {
+    if ! "${FORCE:-false}" && ! ask "Completely remove your Neovim config? This cannot be undone!"; then
+        info "Aborted."
+        exit 0
+    fi
+    
+    if [[ -d "$NVIM_CONFIG_DIR" ]]; then
+        rm -rf "$NVIM_CONFIG_DIR"
+        success "Neovim config removed."
+    else
+        warn "Config directory does not exist."
+    fi
+}
+
+cmd_list() {
+    if [[ ! -f "$LAZY_LOCK" ]]; then
+        error "No lazy-lock.json found. Run 'sharingan sync' first."
+        exit 1
+    fi
+    
+    echo -e "${BG_DARK}\n  ${CYAN}${BOLD}INSTALLED PLUGINS${RESET}"
+    echo -e "${BG_DARK}  ${DIM}════════════════════════════════════════════════════════════════${RESET}"
+    
+    local count=0
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*\"([^\"]+)\" ]]; then
+            count=$((count + 1))
+            local name="${BASH_REMATCH[1]}"
+            local url="https://github.com/$name"
+            echo -e "${BG_DARK}  ${GREEN}$count.${RESET} ${CYAN}$name${RESET}"
+            echo -e "${BG_DARK}     ${DIM}↳${RESET} ${PURPLE}$url${RESET}"
+        fi
+    done < "$LAZY_LOCK"
+    
+    echo -e "${BG_DARK}\n  ${DIM}Total: $count plugins${RESET}\n${RESET}"
+}
+
+cmd_clean() {
+    info "Cleaning unused plugins..."
+    
+    if command -v nvim &>/dev/null; then
+        nvim --headless "+Lazy! clean" +qa 2>&1 || true
+        success "Cleanup complete!"
+    else
+        error "Neovim not found."
+        exit 1
+    fi
+}
+
+cmd_sync() {
+    info "Syncing plugins..."
+    spinner_start
+    
+    if command -v nvim &>/dev/null; then
+        nvim --headless "+Lazy! sync" +qa 2>&1 | while IFS= read -r line; do
+            spinner_update "Syncing"
+        done
+        spinner_stop "Plugins synced!"
+    else
+        error "Neovim not found."
+        exit 1
+    fi
+}
+
+cmd_search() {
+    local query="$1"
+    
+    if ! command -v curl &>/dev/null; then
+        error "curl is required for search."
+        exit 1
+    fi
+    
+    info "Searching for '$query'..."
+    echo ""
+    
+    local results
+    results=$(curl -s "https://registry.npmjs.org/-/v1/search?text=$query&size=10" 2>/dev/null) || {
+        error "Search failed. Check your internet connection."
+        exit 1
+    }
+    
+    echo "$results" | jq -r '.objects[] | "\(.package.name)\n  \(.package.description // "No description")\n  Version: \(.package.version)\n"' 2>/dev/null || {
+        echo "$results"
+    }
+}
+
+cmd_info() {
+    local plugin="$1"
+    
+    if [[ ! -f "$LAZY_LOCK" ]]; then
+        error "No lazy-lock.json found. Run 'sharingan sync' first."
+        exit 1
+    fi
+    
+    local entry
+    entry=$(grep -A5 "\"$plugin\"" "$LAZY_LOCK" 2>/dev/null | head -10) || {
+        error "Plugin '$plugin' not found."
+        exit 1
+    }
+    
+    draw_box "Plugin Info" "$plugin" "Status: Installed" "$entry"
+}
+
+cmd_doctor() {
+    echo -e "${BG_DARK}\n  ${CYAN}${BOLD}SYSTEM CHECK${RESET}"
+    echo -e "${BG_DARK}  ${DIM}════════════════════════════════════════════════════════════════${RESET}"
+    
+    # Check git
+    if command -v git &>/dev/null; then
+        echo -e "${BG_DARK}  ${GREEN}✓${RESET} Git is installed ($(git --version | cut -d' ' -f3))"
+    else
+        echo -e "${BG_DARK}  ${RED}✗${RESET} Git is not installed"
+        echo -e "${BG_DARK}       ${DIM}→${RESET} ${CYAN}Install: sudo apt install git (Debian/Ubuntu)${RESET}"
+    fi
+    
+    # Check neovim
+    if command -v nvim &>/dev/null; then
+        local version
+        version=$(nvim --version | head -1 | cut -d' ' -f2)
+        echo -e "${BG_DARK}  ${GREEN}✓${RESET} Neovim is installed ($version)"
+    else
+        echo -e "${BG_DARK}  ${RED}✗${RESET} Neovim is not installed"
+        echo -e "${BG_DARK}       ${DIM}→${RESET} ${CYAN}Install: https://github.com/neovim/neovim/releases${RESET}"
+    fi
+    
+    # Check config
+    if [[ -d "$NVIM_CONFIG_DIR" ]]; then
+        echo -e "${BG_DARK}  ${GREEN}✓${RESET} Neovim config exists at $NVIM_CONFIG_DIR"
+    else
+        echo -e "${BG_DARK}  ${YELLOW}⚠${RESET} Neovim config not found"
+        echo -e "${BG_DARK}       ${DIM}→${RESET} ${CYAN}Run 'sharingan sync' to set up${RESET}"
+    fi
+    
+    # Check lazy-lock
+    if [[ -f "$LAZY_LOCK" ]]; then
+        echo -e "${BG_DARK}  ${GREEN}✓${RESET} lazy-lock.json exists"
+    else
+        echo -e "${BG_DARK}  ${YELLOW}⚠${RESET} lazy-lock.json not found"
+        echo -e "${BG_DARK}       ${DIM}→${RESET} ${CYAN}Run 'sharingan sync' to generate${RESET}"
+    fi
+    
+    echo -e "${BG_DARK}\n${RESET}"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+main() {
+    local cmd="${1:-help}"
+    local force=false
+    local verbose=false
+    
+    shift 2>/dev/null || true
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--force) force=true; shift ;;
+            -v|--verbose) verbose=true; shift ;;
+            *) break ;;
+        esac
+    done
+    
+    export FORCE="$force"
+    export VERBOSE="$verbose"
+    
+    case "$cmd" in
+        update)
+            cmd_update "${1:-}"
+            ;;
+        reset)
+            cmd_reset
+            ;;
+        remove-config)
+            cmd_remove_config
+            ;;
+        list)
+            cmd_list
+            ;;
+        clean)
+            cmd_clean
+            ;;
+        sync)
+            cmd_sync
+            ;;
+        search)
+            if [[ -z "${1:-}" ]]; then
+                error "Usage: sharingan search <query>"
+                exit 1
+            fi
+            cmd_search "$1"
+            ;;
+        info)
+            if [[ -z "${1:-}" ]]; then
+                error "Usage: sharingan info <plugin>"
+                exit 1
+            fi
+            cmd_info "$1"
+            ;;
+        doctor)
+            cmd_doctor
+            ;;
+        help|--help|-h|"")
+            welcome
+            help
+            ;;
+        *)
+            error "Unknown command: $cmd"
+            echo ""
+            help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

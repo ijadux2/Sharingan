@@ -1,0 +1,20 @@
+# Build artifacts
+*.o
+*.exe
+zig-cache/
+zig-out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Local data (regenerated)
+data/
