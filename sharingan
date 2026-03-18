@@ -118,6 +118,7 @@ ${BG_DARK}    ${GREEN}remove-config${RESET}       ${DIM}Remove entire Neovim con
 ${BG_DARK}    ${GREEN}list${RESET}                ${DIM}List installed plugins${RESET}
 ${BG_DARK}    ${GREEN}clean${RESET}               ${DIM}Remove unused plugins${RESET}
 ${BG_DARK}    ${GREEN}sync${RESET}                ${DIM}Sync plugin database${RESET}
+${BG_DARK}    ${GREEN}fetch${RESET} [url]        ${DIM}Download config from git${RESET}
 ${BG_DARK}    ${GREEN}search${RESET} <query>      ${DIM}Search for plugins online${RESET}
 ${BG_DARK}    ${GREEN}info${RESET} <plugin>       ${DIM}Show plugin information${RESET}
 ${BG_DARK}    ${GREEN}doctor${RESET}              ${DIM}Check system for issues${RESET}
@@ -268,6 +269,75 @@ cmd_sync() {
     fi
 }
 
+cmd_fetch() {
+    local url="${1:-}"
+    local repo_url=""
+    local default_repo="https://github.com/ijadux2/Sharingan.nvim"
+    
+    # Determine URL to fetch
+    if [[ -z "$url" ]]; then
+        repo_url="$default_repo"
+        info "Fetching default config: $repo_url"
+    elif [[ "$url" == "default" ]]; then
+        repo_url="$default_repo"
+        info "Fetching default config: $repo_url"
+    elif [[ "$url" =~ ^https?:// ]]; then
+        repo_url="$url"
+        info "Fetching config: $repo_url"
+    elif [[ "$url" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]]; then
+        repo_url="https://github.com/$url"
+        info "Fetching config: $repo_url"
+    else
+        error "Invalid URL or repo format: $url"
+        echo -e "${BG_DARK}  ${DIM}Examples:${RESET}"
+        echo -e "${BG_DARK}    ${GREEN}sharingan fetch${RESET}                    ${DIM}Fetch default config${RESET}"
+        echo -e "${BG_DARK}    ${GREEN}sharingan fetch default${RESET}             ${DIM}Fetch default config${RESET}"
+        echo -e "${BG_DARK}    ${GREEN}sharingan fetch https://...${RESET}         ${DIM}Fetch from URL${RESET}"
+        echo -e "${BG_DARK}    ${GREEN}sharingan fetch user/repo${RESET}            ${DIM}Fetch from GitHub${RESET}"
+        exit 1
+    fi
+    
+    # Check if config already exists
+    if [[ -d "$NVIM_CONFIG_DIR" ]] && [[ ! -z "$(ls -A "$NVIM_CONFIG_DIR" 2>/dev/null)" ]]; then
+        if ! "${FORCE:-false}" && ! ask "Config exists at $NVIM_CONFIG_DIR. Remove and fetch new?"; then
+            info "Aborted."
+            exit 0
+        fi
+        warn "Removing existing config..."
+        rm -rf "$NVIM_CONFIG_DIR"
+    fi
+    
+    # Ensure parent directory exists
+    mkdir -p "$(dirname "$NVIM_CONFIG_DIR")"
+    
+    # Clone the repo
+    info "Cloning config..."
+    spinner_start
+    
+    if git clone --depth 1 "$repo_url" "$NVIM_CONFIG_DIR" 2>&1; then
+        spinner_stop "Config cloned successfully!"
+        
+        # Show what was fetched
+        echo -e "${BG_DARK}\n  ${GREEN}${BOLD}✓ Config installed!${RESET}"
+        echo -e "${BG_DARK}  ${DIM}Location: $NVIM_CONFIG_DIR${RESET}"
+        echo -e "${BG_DARK}\n  ${CYAN}Next steps:${RESET}"
+        echo -e "${BG_DARK}    1. ${GREEN}sharingan sync${RESET} - Sync plugins"
+        echo -e "${BG_DARK}    2. ${GREEN}nvim${RESET} - Launch Neovim"
+        echo -e "${RESET}"
+        
+        # Check if lazy.nvim needs setup
+        if [[ -f "$NVIM_CONFIG_DIR/lazy-lock.json" ]]; then
+            info "lazy-lock.json found. Run 'sharingan sync' to install plugins."
+        else
+            info "No lazy-lock.json found. Plugins will be installed on first launch."
+        fi
+    else
+        spinner_stop "Clone failed!"
+        error "Failed to clone $repo_url"
+        exit 1
+    fi
+}
+
 cmd_search() {
     local query="$1"
     
@@ -387,6 +457,9 @@ main() {
             ;;
         sync)
             cmd_sync
+            ;;
+        fetch)
+            cmd_fetch "${1:-}"
             ;;
         search)
             if [[ -z "${1:-}" ]]; then

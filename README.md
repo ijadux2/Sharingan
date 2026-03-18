@@ -22,6 +22,7 @@ cd ~/codespace/sharingan.nvim
 ```
 
 Or manually:
+
 ```bash
 ln -s ~/codespace/sharingan.nvim/sharingan ~/.local/bin/sharingan
 export PATH="$HOME/.local/bin:$PATH"  # Add to .bashrc/.zshrc
