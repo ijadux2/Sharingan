@@ -52,6 +52,11 @@ sharingan list
 # Sync plugin database
 sharingan sync
 
+# Download config from GitHub
+sharingan fetch                    # Fetch default config
+sharingan fetch user/repo         # Fetch from GitHub
+sharingan fetch https://...       # Fetch from URL
+
 # Clean unused plugins
 sharingan clean
 
